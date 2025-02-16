@@ -44,4 +44,6 @@ if __name__ == "__main__":
     
     analyzer = ImageAnalyzer(dataset_dir)
     largest_dimensions = analyzer.get_largest_image_dimensions()
+    smallest_dimensions = analyzer.get_smallest_image_dimensions()
     print(f"Largest image dimensions: {largest_dimensions}")
+    print(f"Smallest image dimensions: {smallest_dimensions}")
