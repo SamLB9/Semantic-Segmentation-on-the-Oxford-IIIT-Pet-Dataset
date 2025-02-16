@@ -22,7 +22,10 @@ class ImageAnalyzer:
         return max_width, max_height
 
 if __name__ == "__main__":
-    directory = 'CV-CW1/Dataset/TrainVal/color'
-    analyzer = ImageAnalyzer(directory)
+    #Get absolute path relative to script location
+    script_dir = os.path.dirname(os.path.abspath(__file__))  # Directory of script
+    dataset_dir = os.path.join(script_dir, "../Dataset/TrainVal/color")  # Adjust path
+    
+    analyzer = ImageAnalyzer(dataset_dir)
     largest_dimensions = analyzer.get_largest_image_dimensions()
     print(f"Largest image dimensions: {largest_dimensions}")
