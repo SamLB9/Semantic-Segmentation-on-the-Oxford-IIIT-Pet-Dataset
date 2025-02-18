@@ -310,7 +310,7 @@ def main():
                                        transform_label=transform_label)
     test_loss, test_acc = test_model(best_model_path, test_dataset, batch_size=8)
 
-    save_metrics(metrics, test_loss, test_acc, 'results/training_metrics.csv')
+    save_metrics(metrics, test_loss, test_acc, 'training_metrics.csv')
 
     print("Done")
     sys.stdout.flush()
