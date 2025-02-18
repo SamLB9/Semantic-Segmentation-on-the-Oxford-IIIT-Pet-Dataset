@@ -29,14 +29,9 @@ class ResizeWithPadding:
 
     def resize_image(self, image):
         h, w = image.shape[:2]
-        if self.force_resize:
-            scale = self.resize_dims[0] / max(h, w)
-            new_w, new_h = int(w * scale), int(h * scale)
-            resized_image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-        else:
-            scale = self.resize_dims[0] / max(h, w)
-            new_w, new_h = int(w * scale), int(h * scale)
-            resized_image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+        scale = self.resize_dims[0] / max(h, w)
+        new_w, new_h = int(w * scale), int(h * scale)
+        resized_image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
         return resized_image
 
     def pad_image(self, image):
@@ -82,14 +77,9 @@ class ResizeWithPaddingLabel:
 
     def resize_image(self, image):
         h, w = image.shape[:2]
-        if self.force_resize:
-            scale = self.resize_dims[0] / max(h, w)
-            new_w, new_h = int(w * scale), int(h * scale)
-            resized_image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
-        else:
-            scale = self.resize_dims[0] / max(h, w)
-            new_w, new_h = int(w * scale), int(h * scale)
-            resized_image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+        scale = self.resize_dims[0] / max(h, w)
+        new_w, new_h = int(w * scale), int(h * scale)
+        resized_image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
         return resized_image
 
     def pad_image(self, image):
@@ -133,54 +123,112 @@ def elastic_transform_pair(image, label, alpha=34, sigma=4):
     transformed_label = cv2.remap(np_label, map_x, map_y, interpolation=cv2.INTER_NEAREST, borderMode=cv2.BORDER_REFLECT)
     return Image.fromarray(transformed_img), Image.fromarray(transformed_label)
 
-def augment_pair(image, label, size=(256, 256), apply_color=True):
+def augment_pair(image, label, size=(256, 256), apply_color=True, **params):
     """
-    Apply a series of geometric (physical) augmentations to both image and label:
-      - Flipping, rotation, translation, random resized cropping,
-        elastic transformation, random scaling, and center cropping.
-    Then, if apply_color is True (i.e. for training), apply additional
-    noise/color augmentations (Gaussian blur and color jitter) only to the image.
-    The label remains unchanged for these color augmentations.
+    Applies a random subset of augmentations in random order.
+    Each augmentation is stored as a function with its own probability.
+    
+    To disable an augmentation, set its probability to 0.
+    To guarantee an augmentation, set its probability to 1.
+    Modify parameters (e.g., rotation_angle, translate_factor) to adjust intensity.
     """
-    # Random horizontal flip
-    if random.random() < 0.5:
-        image = F.hflip(image)
-        label = F.hflip(label)
-    # Random rotation
-    angle = random.uniform(-15, 15)
-    image = F.rotate(image, angle, interpolation=Image.BILINEAR)
-    label = F.rotate(label, angle, interpolation=Image.NEAREST)
-    # Random translation using affine (translation only)
-    max_translate = 0.1 * size[0]  # 10% of image size
-    translate_x = int(random.uniform(-max_translate, max_translate))
-    translate_y = int(random.uniform(-max_translate, max_translate))
-    image = F.affine(image, angle=0, translate=(translate_x, translate_y),
-                     scale=1.0, shear=0, interpolation=Image.BILINEAR)
-    label = F.affine(label, angle=0, translate=(translate_x, translate_y),
-                     scale=1.0, shear=0, interpolation=Image.NEAREST)
-    # Random resized crop
-    i, j, h, w = transforms.RandomResizedCrop.get_params(image, scale=(0.8, 1.0), ratio=(0.9, 1.1))
-    image = F.resized_crop(image, i, j, h, w, size, interpolation=Image.BILINEAR)
-    label = F.resized_crop(label, i, j, h, w, size, interpolation=Image.NEAREST)
-    # Elastic transformation
-    image, label = elastic_transform_pair(image, label, alpha=34, sigma=4)
-    # Additional augmentation: Random scaling (zoom in/out)
-    scale_factor = random.uniform(0.9, 1.1)
-    new_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
-    image = F.resize(image, new_size, interpolation=Image.BILINEAR)
-    label = F.resize(label, new_size, interpolation=Image.NEAREST)
-    # Center crop back to desired size
+    # Build list of augmentation functions with their associated probability.
+    augmentations = []
+
+    # Horizontal flip
+    augmentations.append((
+        lambda img, lbl: (F.hflip(img), F.hflip(lbl)),
+        params.get("flip_prob", 0.5)  # default: 50% chance
+    ))
+
+    # Rotation (you can control intensity via "rotation_angle")
+    def rotate_aug(img, lbl):
+        angle = random.uniform(-params.get("rotation_angle", 5), params.get("rotation_angle", 10))
+        return F.rotate(img, angle, interpolation=Image.BILINEAR), F.rotate(lbl, angle, interpolation=Image.NEAREST)
+    augmentations.append((
+        rotate_aug,
+        params.get("rotation_prob", 0.25)  # default: always apply rotation
+    ))
+
+    # Translation (intensity via "translate_factor")
+    def translate_aug(img, lbl):
+        max_translate = params.get("translate_factor", 0.05) * size[0]
+        tx = int(random.uniform(-max_translate, max_translate))
+        ty = int(random.uniform(-max_translate, max_translate))
+        return (F.affine(img, angle=0, translate=(tx, ty), scale=1.0, shear=0, interpolation=Image.BILINEAR),
+                F.affine(lbl, angle=0, translate=(tx, ty), scale=1.0, shear=0, interpolation=Image.NEAREST))
+    augmentations.append((
+        translate_aug,
+        params.get("translate_prob", 0.05)  # default: always apply translation
+    ))
+
+    # Random Resized Crop (controls framing; intensity via crop_scale_range and crop_ratio_range)
+    def crop_aug(img, lbl):
+        i, j, h, w = transforms.RandomResizedCrop.get_params(
+            img,
+            scale=params.get("crop_scale_range", (0.9, 1.0)),
+            ratio=params.get("crop_ratio_range", (1.0, 1.0))
+        )
+        return (F.resized_crop(img, i, j, h, w, size, interpolation=Image.BILINEAR),
+                F.resized_crop(lbl, i, j, h, w, size, interpolation=Image.NEAREST))
+    augmentations.append((
+        crop_aug,
+        params.get("crop_prob", 0.01)  # default: always apply crop
+    ))
+
+    # Elastic Transformation (intensity via "elastic_alpha" and "elastic_sigma")
+    def elastic_aug(img, lbl):
+        return elastic_transform_pair(
+            img, lbl,
+            alpha=params.get("elastic_alpha", 15),
+            sigma=params.get("elastic_sigma", 2)
+        )
+    augmentations.append((
+        elastic_aug,
+        params.get("elastic_prob", 0.01)  # default: always apply elastic transformation
+    ))
+
+    # Random Scaling (intensity via "scaling_range")
+    def scaling_aug(img, lbl):
+        scale_factor = random.uniform(*params.get("scaling_range", (0.0, 0.0)))
+        new_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
+        return (F.resize(img, new_size, interpolation=Image.BILINEAR),
+                F.resize(lbl, new_size, interpolation=Image.NEAREST))
+    augmentations.append((
+        scaling_aug,
+        params.get("scaling_prob", 0.0)  # default: always apply scaling
+    ))
+
+    # Color augmentations: Gaussian blur and Color jitter.
+    def color_aug(img, lbl):
+        if random.random() < params.get("blur_prob", 0.0):
+            img = img.filter(
+                ImageFilter.GaussianBlur(
+                    radius=random.uniform(*params.get("blur_radius_range", (0.5, 1.5)))
+                )
+            )
+        color_jitter = transforms.ColorJitter(**params.get("color_jitter_params", {
+            'brightness': 0.2, 'contrast': 0.2, 'saturation': 0.2, 'hue': 0.1
+        }))
+        img = color_jitter(img)
+        return img, lbl
+    augmentations.append((
+        color_aug,
+        params.get("color_prob", 0.25)  # default: always apply color adjustments if apply_color is True
+    ))
+
+    # Optionally randomize the order of augmentations.
+    random.shuffle(augmentations)
+
+    # Apply each augmentation based on its probability.
+    for func, prob in augmentations:
+        if random.random() < prob:
+            image, label = func(image, label)
+
+    # Optionally, enforce a final center crop to ensure the image is the desired size.
     image = F.center_crop(image, size)
     label = F.center_crop(label, size)
-    # For training only, apply color/noise augmentations to the image (labels remain unchanged)
-    if apply_color:
-        # Gaussian blur (applied with probability 0.3)
-        if random.random() < 0.3:
-            image = image.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.5, 1.5)))
-        # Color jitter
-        color_jitter = transforms.ColorJitter(brightness=0.2, contrast=0.2,
-                                               saturation=0.2, hue=0.1)
-        image = color_jitter(image)
+
     return image, label
 
 # --------------------------
@@ -191,7 +239,8 @@ class Preprocessor:
     def __init__(self, raw_color_path, raw_label_path,
                  proc_color_path, proc_label_path,
                  resize_dim=128, do_augmentation=True,
-                 is_train=True, max_images=None, aug_count=10):
+                 is_train=True, max_images=None, aug_count=10, aug_params=None):
+        
         """
         Parameters:
           - raw_color_path: Relative path to raw color images.
@@ -204,6 +253,8 @@ class Preprocessor:
           - max_images: Process only a subset of images (for testing the pipeline).
           - aug_count: Number of augmentations to create per image (train only).
         """
+        self.aug_params = aug_params if aug_params is not None else {}
+
         self.raw_color_path = Path(raw_color_path)
         self.raw_label_path = Path(raw_label_path)
         self.proc_color_path = Path(proc_color_path)
@@ -256,7 +307,7 @@ class Preprocessor:
             # If training and augmentation is enabled, create additional augmented pairs
             if self.is_train and self.do_augmentation:
                 for i in range(self.aug_count):
-                    aug_img, aug_label = augment_pair(proc_img, proc_label, size=(self.resize_dim, self.resize_dim))
+                    aug_img, aug_label = augment_pair(proc_img, proc_label, size=(self.resize_dim, self.resize_dim), **self.aug_params)
                     aug_img.save(self.proc_color_path / f"processed_{img_file.stem}_aug_{i}{img_file.suffix}")
                     aug_label.save(self.proc_label_path / f"processed_{label_file.stem}_aug_{i}{label_file.suffix}")
                     print(f"Augmented {img_file.name} -> aug {i}")
@@ -287,7 +338,24 @@ if __name__ == "__main__":
                         help="Number of augmentations per image (train only).")
     parser.add_argument("--set_type", type=str, choices=["TrainVal", "Test"], default="TrainVal",
                         help="Dataset type: TrainVal or Test.")
-
+    parser.add_argument("--flip_prob", type=float, default=0.5, help="Probability for horizontal flip.")
+    parser.add_argument("--rotation_angle", type=float, default=5, help="Maximum rotation angle (in degrees).")
+    parser.add_argument("--translate_factor", type=float, default=0.05, help="Translation factor (fraction of image size).")
+    parser.add_argument("--crop_scale_min", type=float, default=0.9, help="Minimum scale for random resized crop.")
+    parser.add_argument("--crop_scale_max", type=float, default=1.0, help="Maximum scale for random resized crop.")
+    parser.add_argument("--crop_ratio_min", type=float, default=1.0, help="Minimum aspect ratio for random resized crop.")
+    parser.add_argument("--crop_ratio_max", type=float, default=1.0, help="Maximum aspect ratio for random resized crop.")
+    parser.add_argument("--elastic_alpha", type=float, default=15, help="Elastic transformation alpha parameter.")
+    parser.add_argument("--elastic_sigma", type=float, default=2, help="Elastic transformation sigma parameter.")
+    parser.add_argument("--scaling_min", type=float, default=0.0, help="Minimum scaling factor for random scaling.")
+    parser.add_argument("--scaling_max", type=float, default=0.0, help="Maximum scaling factor for random scaling.")
+    parser.add_argument("--blur_prob", type=float, default=0.3, help="Probability of applying Gaussian blur.")
+    parser.add_argument("--blur_radius_min", type=float, default=0.5, help="Minimum radius for Gaussian blur.")
+    parser.add_argument("--blur_radius_max", type=float, default=1.5, help="Maximum radius for Gaussian blur.")
+    parser.add_argument("--color_jitter_brightness", type=float, default=0.2, help="Brightness for color jitter.")
+    parser.add_argument("--color_jitter_contrast", type=float, default=0.2, help="Contrast for color jitter.")
+    parser.add_argument("--color_jitter_saturation", type=float, default=0.2, help="Saturation for color jitter.")
+    parser.add_argument("--color_jitter_hue", type=float, default=0.1, help="Hue for color jitter.")
     args = parser.parse_args()
 
     # Define relative paths based on set type
@@ -301,6 +369,31 @@ if __name__ == "__main__":
         raw_label = Path("Dataset/raw/Test/label")
         proc_color = Path("Dataset/processed/Test/color")
         proc_label = Path("Dataset/processed/Test/label")
+    
+    aug_params = {
+        "flip_prob": args.flip_prob,  # Already exists.
+        "rotation_angle": args.rotation_angle,
+        "rotation_prob": 0.25,         # Always apply rotation, for instance.
+        "translate_factor": args.translate_factor,
+        "translate_prob": 0.05,        # Always apply translation.
+        "crop_scale_range": (args.crop_scale_min, args.crop_scale_max),
+        "crop_ratio_range": (args.crop_ratio_min, args.crop_ratio_max),
+        "crop_prob": 0.01,             # Always apply crop.
+        "elastic_alpha": args.elastic_alpha,
+        "elastic_sigma": args.elastic_sigma,
+        "elastic_prob": 0.01,          # Always apply elastic transform.
+        "scaling_range": (args.scaling_min, args.scaling_max),
+        "scaling_prob": 0.0,          # Always apply scaling.
+        "blur_prob": args.blur_prob,
+        "blur_radius_range": (args.blur_radius_min, args.blur_radius_max),
+        "color_jitter_params": {
+            "brightness": args.color_jitter_brightness,
+            "contrast": args.color_jitter_contrast,
+            "saturation": args.color_jitter_saturation,
+            "hue": args.color_jitter_hue,
+        },
+        "color_prob": 1.0            # Always apply color adjustments if enabled.
+    }
 
     preprocessor = Preprocessor(raw_color, raw_label,
                                 proc_color, proc_label,
@@ -308,5 +401,7 @@ if __name__ == "__main__":
                                 do_augmentation=not args.no_augment,
                                 is_train=(args.set_type == "TrainVal"),
                                 max_images=args.max_images,
-                                aug_count=args.aug_count)
+                                aug_count=args.aug_count,
+                                aug_params=aug_params)
+
     preprocessor.process()
