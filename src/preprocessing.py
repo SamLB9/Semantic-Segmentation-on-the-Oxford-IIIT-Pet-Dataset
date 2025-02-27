@@ -190,7 +190,7 @@ def augment_pair(image, label, size=(256, 256), apply_color=True, **params):
 
     # Random Scaling (intensity via "scaling_range")
     def scaling_aug(img, lbl):
-        scale_factor = random.uniform(*params.get("scaling_range", (0.0, 0.0)))
+        scale_factor = random.uniform(*params.get("scaling_range", (0.5, 1.5)))
         new_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
         return (F.resize(img, new_size, interpolation=Image.BILINEAR),
                 F.resize(lbl, new_size, interpolation=Image.NEAREST))
@@ -384,7 +384,7 @@ if __name__ == "__main__":
         "elastic_prob": 0.01,          # Always apply elastic transform.
         "scaling_range": (args.scaling_min, args.scaling_max),
         "scaling_prob": 0.0,          # Always apply scaling.
-        "blur_prob": args.blur_prob,
+        "blur_prob": 0.0,
         "blur_radius_range": (args.blur_radius_min, args.blur_radius_max),
         "color_jitter_params": {
             "brightness": args.color_jitter_brightness,
@@ -405,3 +405,28 @@ if __name__ == "__main__":
                                 aug_params=aug_params)
 
     preprocessor.process()
+
+
+    '''
+    python CV-CW1/src/preprocessing.py --raw_color Dataset/raw/Test/color \
+                        --raw_label Dataset/raw/Test/label \
+                        --proc_color Dataset/processed/Test/color \
+                        --proc_label Dataset/processed/Test/label \
+                        --resize_dim 256 \
+                        --no_augment \
+                        --set_type Test'''
+
+'''
+    python CV-CW1/src/preprocessing.py --raw_color Dataset/raw/TrainVal/color \
+                        --raw_label Dataset/raw/TrainVal/label \
+                        --proc_color Dataset/processed/TrainVal/color \
+                        --proc_label Dataset/processed/TrainVal/label \
+                        --resize_dim 256 \
+                        --aug_count 10 \
+                        --set_type TrainVal \
+                        --translate_factor 0.02 \
+                        --elastic_alpha 0.0 \
+                        --elastic_sigma 0.05 \
+                        --blur_radius_min 0.0 \
+                        --blur_radius_max 0.5
+                        '''
