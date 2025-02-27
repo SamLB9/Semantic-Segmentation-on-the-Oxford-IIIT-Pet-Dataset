@@ -1,0 +1,4 @@
+# pip freeze output - example:
+torch==1.13.1
+torchvision==0.14.1
+# ...other dependencies...
