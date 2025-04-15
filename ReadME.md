@@ -1,17 +1,20 @@
-# OXFORD-IIIT PET Dataset
+# Overview
 -----------------------
 
-This is a processed version of the OXFORD-IIIT PET Dataset dataset by Haocheng Yuan, the original authors are Omkar M Parkhi, Andrea Vedaldi, Andrew Zisserman and C. V. Jawahar. The dataset is used and can only be used for teaching purpose.
+Using a standardized Oxford-IIIT Pet Dataset segmentation task, this study provides a thorough comparative examination of four segmentation architectures, UNet, Autoencoder, CLIP-based, and Prompt-based. Providing insights into architectural trade-offs, robustness, and practical application. The UNet model performs poorly in crowded environments and under class imbalance, although showing good generalization and border delineation considering its architectural simplicity. Despite its theoretical potential, the autoencoder’s two-step decoding method and insufficient semantic granularity cause it to continually lag behind and display unpredictable training dynamics. The CLIP-based model, which makes use of frozen multimodal embeddings, performs best on all important metrics and is highly resilient to structural and photometric perturbations. Building on this, our prompt-guided segmentation model achieves high pixel accuracy with added user input despite lower spatial precision, extending utility to interactive contexts. Our findings highlight the advantages of pretraining, multimodal fusion, and architectural maturity in computer vision pipelines and confirm that deliberate simplification may yield workable lightweight alternatives for practical implementation.
 
-## Contents
+## Introduction
 --------
-- Dataset/**/color: RGB images of pets
-- Dataset/**/label: semantic masks (in PIL format) with pixel annotations.
+Image segmentation plays a crucial role in many computer vision applications, including medical imaging, scene understanding, and object recognition. Image segmentation has been revolutionized by the advent of transformer-based architectures and large-scale pretrained vision-language models, which allow rich semantic understanding and robust generalization from limited supervision. Since the creation and proof of performance of the UNet in the ISBI Cell Tracking Challenge, image segmentation has significantly improved Ronneberger et al. (2015). The architecture of these networks has evolved to achieve human or even superhuman performance on tasks such as cancer detection and object recognition in self-driving vehicles. In this project, we will explore the evolution of model architectures on the popular PET III dataset to discover how changes in architecture affect performance in image segmentation tasks. We will systematically train and evaluate four segmentation models on the PET III dataset, UNet, Autoencoder, CLIP-based, and Prompt-based architectures, in order to provide a fair comparison and to produce a report on the comparative qualitative and quantitative performance of these models. In the following essay, we will evaluate the examined models via these steps, which are detailed in the order of the Table of Contents.
 
-    - 0: background
-    - 1: cat
-    - 2: dog
-
-## Note
+## Dataset Preprocessing and Augmentation
+--------
+### Dataset Overview
 ----
-Please ensure that your model is trained using the trainval dataset and evaluated on the test set.
+The Oxford-IIIT Pet Dataset Parkhi et al. (2012) consists of 7,392 RGB images and their corresponding pixel-wise ground-truth segmentation masks, each belonging to one of 37 pet breeds (12 cats and 25 dogs). ”The dataset contains about 200 images for each breed (which have been split randomly into 50 for training, 50 for validation, and 100 for testing)” Parkhi et al. (2012). We will expand the TrainVal set with augmented data discussed later. These images exhibit considerable variability in scale, lighting conditions, pose, and background clutter, thereby making the dataset particularly suitable for evaluating the robustness of semantic segmentation algorithms under real-world visual variability. Each image is annotated at the pixel level with semantic labels representing three core classes: background (0), cat (1), and dog (2). For the test set, a fourth label corresponding to object boundaries (3) is included and encoded in RGB, requiring a dedicated parsing routine for compatibility with conventional segmentation pipelines. The dataset is partitioned into three non-overlapping subsets: training, validation, and test. Each subset is balanced to contain approximately 200 instances per breed following the evaluation protocol proposed in Parkhi et al. (2012). This ensures that the training set captures intra-class variation, while the validation set supports hyperparameter optimization and the test set provides an unbiased measure of generalization.
+
+### Preprocessing Pipeline
+----
+#### Resizing and Padding
+--
+To address heterogeneity in raw image dimensions and ensure compatibility with neural network architectures requiring fixed input sizes, we employed a structured preprocessing pipeline involving resizing followed by symmetric padding. This pipeline was applied to the TrainVal set and the Test set. Let (H,W) denote the height and width of an input image. The resizing step rescales the image isotropically such that the larger dimension is mapped to D= 128, preserving the aspect ratio via the bilinear interpolation function:
