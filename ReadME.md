@@ -4,7 +4,7 @@ This project presents a comprehensive evaluation of four segmentation architectu
 
 ## 📄 Project Report
 
-A detailed write-up of the experiments and findings is available in the LaTeX paper:  
+A detailed write-up of the experiments and findings is available in this paper:  
 🔗 [Read the full report on Google Drive](https://drive.google.com/file/d/1WktaY_pguMPYaYiN5j8CaSV3rMvuNl-F/view?usp=sharing)
 
 ## 🔍 Summary of Findings
