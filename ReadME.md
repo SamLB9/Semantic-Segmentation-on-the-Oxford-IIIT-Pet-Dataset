@@ -2,6 +2,8 @@
 
 This project presents a comprehensive evaluation of four segmentation architectures — **UNet**, **Autoencoder**, **CLIP-based**, and **Prompt-guided** — using the standardized [Oxford-IIIT Pet Dataset](https://www.robots.ox.ac.uk/~vgg/data/pets/). The aim is to explore architectural trade-offs, robustness to perturbations, and practical applicability in real-world computer vision tasks.
 
+![Alt text](visual_comparison.png)
+
 ## 📄 Project Report
 
 A detailed write-up of the experiments and findings is available in this paper:  
